@@ -51,4 +51,27 @@ npm run build
 
 ```
 src/
-  ├── assets/          
+  ├── assets/          # 静态资源文件
+  ├── components/      # 公共组件
+  ├── router/          # 路由配置
+  ├── views/           # 页面视图
+  ├── App.vue          # 根组件
+  └── main.js          # 入口文件
+```
+
+## 功能特点
+
+- 用户登录/注册
+- 表单验证
+- 记住密码
+- 社交媒体登录
+- 响应式布局
+- 主题切换
+
+## 贡献
+
+欢迎提交 Issue 或 Pull Request！
+
+## 许可证
+
+[MIT License](LICENSE)

@@ -23,10 +23,10 @@
           ref="loginFormRef"
           class="login-form-content"
         >
-          <el-form-item prop="phone">
+          <el-form-item prop="username">
             <el-input 
-              v-model="loginForm.phone"
-              placeholder="请输入手机号"
+              v-model="loginForm.username"
+              placeholder="请输入用户名"
               :prefix-icon="User"
               size="large"
             />
@@ -94,19 +94,21 @@
 import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Hide, Message, ChatDotRound as Wechat } from '@element-plus/icons-vue'
+import { login } from '@/api/admin'
+import { useRouter } from 'vue-router'
 
 const loading = ref(false)
 const loginFormRef = ref(null)
 const loginForm = reactive({
-  phone: '',
+  username: '',
   password: '',
   remember: false
 })
 
 const rules = {
-  phone: [
-    { required: true, message: '请输入手机号', trigger: 'blur' },
-    { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号', trigger: 'blur' }
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { min: 3, message: '用户名不能少于3个字符', trigger: 'blur' }
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
@@ -114,18 +116,31 @@ const rules = {
   ]
 }
 
+const router = useRouter()
+
 const handleLogin = async () => {
   if (!loginFormRef.value) return
   
   try {
     await loginFormRef.value.validate()
     loading.value = true
-    // 模拟登录请求
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    
+    const res = await login({
+      username: loginForm.username,
+      password: loginForm.password
+    })
+    
+    // 存储 token
+    localStorage.setItem('token', res.data.token)
+    // 存储用户信息
+    localStorage.setItem('userInfo', JSON.stringify(res.data.userInfo))
+    
     ElMessage.success('登录成功')
-    loading.value = false
+    // 跳转到首页
+    router.push('/')
   } catch (error) {
-    ElMessage.error('请检查输入信息')
+    ElMessage.error(error.response?.data?.message || '登录失败')
+  } finally {
     loading.value = false
   }
 }
