@@ -14,7 +14,12 @@
             />
           </el-form-item>
           <el-form-item label="角色">
-            <el-select v-model="queryParams.roleType" placeholder="请选择角色" clearable>
+            <el-select 
+              v-model="queryParams.roleType" 
+              placeholder="请选择角色" 
+              clearable
+              style="width: 180px;"
+            >
               <el-option label="超级管理员" :value="2" />
               <el-option label="普通管理员" :value="1" />
             </el-select>
@@ -89,23 +94,78 @@
 
       <!-- 分页 -->
       <div class="pagination-container">
-        <el-pagination
-          v-model:current-page="queryParams.pageNum"
-          v-model:page-size="queryParams.pageSize"
-          :page-sizes="[10, 20, 30, 50]"
-          :total="total"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
+        <el-config-provider :locale="zhCn">
+          <el-pagination
+            v-model:current-page="queryParams.pageNum"
+            v-model:page-size="queryParams.pageSize"
+            :page-sizes="[10, 20, 30, 50]"
+            :total="total"
+            layout="total, sizes, prev, pager, next"
+            :pager-count="7"
+            background
+            @size-change="handleSizeChange"
+            @current-change="handleCurrentChange"
+          />
+        </el-config-provider>
       </div>
     </div>
+
+    <!-- 添加/编辑对话框 -->
+    <el-dialog
+      :title="dialogTitle"
+      v-model="dialogVisible"
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <el-form
+        ref="dialogFormRef"
+        :model="dialogForm"
+        :rules="dialogRules"
+        label-width="100px"
+      >
+        <el-form-item label="用户名" prop="username">
+          <el-input v-model="dialogForm.username" :disabled="dialogType === 'edit'" />
+        </el-form-item>
+        <el-form-item label="昵称" prop="nickname">
+          <el-input v-model="dialogForm.nickname" />
+        </el-form-item>
+        <el-form-item label="密码" prop="password" v-if="dialogType === 'add'">
+          <el-input v-model="dialogForm.password" type="password" show-password />
+        </el-form-item>
+        <el-form-item label="角色" prop="roleType">
+          <el-select v-model="dialogForm.roleType" placeholder="请选择角色">
+            <el-option label="超级管理员" :value="2" />
+            <el-option label="普通管理员" :value="1" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="负责学段" prop="gradeLevels">
+          <el-select
+            v-model="dialogForm.gradeLevels"
+            multiple
+            placeholder="请选择负责学段"
+          >
+            <el-option label="小学" value="小学" />
+            <el-option label="初中" value="初中" />
+            <el-option label="高中" value="高中" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogVisible = false">取 消</el-button>
+        <el-button type="primary" @click="handleDialogSubmit" :loading="dialogLoading">
+          确 定
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getUserList, addUser, updateUser, deleteUser, changeUserStatus } from '@/api/user'
+import { ElConfigProvider } from 'element-plus'
+import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 
 // 查询参数
 const queryParams = reactive({
@@ -118,36 +178,64 @@ const queryParams = reactive({
 // 表格数据
 const loading = ref(false)
 const total = ref(0)
-const adminList = ref([
-  {
-    id: 1,
-    username: 'admin',
-    nickname: '超级管理员',
-    roleType: 2,
-    status: 1,
-    createTime: '2024-01-01 12:00:00',
-    gradeLevels: ['小学', '初中', '高中']
-  },
-  {
-    id: 2,
-    username: 'test',
-    nickname: '测试账号',
-    roleType: 1,
-    status: 1,
-    createTime: '2024-01-02 12:00:00',
-    gradeLevels: ['小学']
-  }
-])
+const adminList = ref([])
 
-// 查询方法
-const handleQuery = () => {
+// 对话框相关
+const dialogVisible = ref(false)
+const dialogLoading = ref(false)
+const dialogType = ref('add') // add 或 edit
+const dialogFormRef = ref(null)
+const dialogForm = reactive({
+  username: '',
+  nickname: '',
+  password: '',
+  roleType: 1,
+  gradeLevels: []
+})
+
+const dialogTitle = computed(() => {
+  return dialogType.value === 'add' ? '新增管理员' : '编辑管理员'
+})
+
+const dialogRules = {
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { min: 3, max: 20, message: '长度在 3 到 20 个字符', trigger: 'blur' }
+  ],
+  nickname: [
+    { required: true, message: '请输入昵称', trigger: 'blur' },
+    { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, message: '密码不能少于6位', trigger: 'blur' }
+  ],
+  roleType: [
+    { required: true, message: '请选择角色', trigger: 'change' }
+  ],
+  gradeLevels: [
+    { required: true, message: '请选择负责学段', trigger: 'change' }
+  ]
+}
+
+// 获取用户列表
+const getList = async () => {
   loading.value = true
-  // TODO: 调用后端接口获取数据
-  setTimeout(() => {
+  try {
+    const res = await getUserList(queryParams)
+    adminList.value = res.data.list
+    total.value = res.data.total
+  } catch (error) {
+    console.error('获取用户列表失败:', error)
+  } finally {
     loading.value = false
-    total.value = adminList.value.length
-    ElMessage.success('查询成功')
-  }, 500)
+  }
+}
+
+// 查询
+const handleQuery = () => {
+  queryParams.pageNum = 1
+  getList()
 }
 
 // 重置查询
@@ -159,12 +247,58 @@ const resetQuery = () => {
 
 // 新增管理员
 const handleAdd = () => {
-  ElMessage.info('新增管理员功能开发中...')
+  dialogType.value = 'add'
+  dialogVisible.value = true
+  dialogForm.username = ''
+  dialogForm.nickname = ''
+  dialogForm.password = ''
+  dialogForm.roleType = 1
+  dialogForm.gradeLevels = []
+  
+  // 等待 DOM 更新后重置表单验证
+  nextTick(() => {
+    if (dialogFormRef.value) {
+      dialogFormRef.value.resetFields()
+    }
+  })
 }
 
 // 编辑管理员
 const handleEdit = (row) => {
-  ElMessage.info('编辑管理员功能开发中...')
+  dialogType.value = 'edit'
+  dialogVisible.value = true
+  Object.assign(dialogForm, {
+    id: row.id,
+    username: row.username,
+    nickname: row.nickname,
+    roleType: row.roleType,
+    gradeLevels: row.gradeLevels
+  })
+}
+
+// 提交表单
+const handleDialogSubmit = async () => {
+  if (!dialogFormRef.value) return
+  
+  try {
+    await dialogFormRef.value.validate()
+    dialogLoading.value = true
+    
+    if (dialogType.value === 'add') {
+      await addUser(dialogForm)
+      ElMessage.success('添加成功')
+    } else {
+      await updateUser(dialogForm.id, dialogForm)
+      ElMessage.success('更新成功')
+    }
+    
+    dialogVisible.value = false
+    getList()
+  } catch (error) {
+    console.error('提交失败:', error)
+  } finally {
+    dialogLoading.value = false
+  }
 }
 
 // 删除管理员
@@ -177,30 +311,42 @@ const handleDelete = (row) => {
       cancelButtonText: '取消',
       type: 'warning'
     }
-  ).then(() => {
-    ElMessage.success('删除成功')
+  ).then(async () => {
+    try {
+      await deleteUser(row.id)
+      ElMessage.success('删除成功')
+      getList()
+    } catch (error) {
+      console.error('删除失败:', error)
+    }
   }).catch(() => {})
 }
 
 // 修改状态
-const handleStatusChange = (row) => {
-  ElMessage.success(`${row.status === 1 ? '禁用' : '启用'}成功`)
+const handleStatusChange = async (row) => {
+  try {
+    await changeUserStatus(row.id, row.status === 1 ? 0 : 1)
+    ElMessage.success(`${row.status === 1 ? '禁用' : '启用'}成功`)
+    getList()
+  } catch (error) {
+    console.error('状态修改失败:', error)
+  }
 }
 
 // 分页方法
 const handleSizeChange = (val) => {
   queryParams.pageSize = val
-  handleQuery()
+  getList()
 }
 
 const handleCurrentChange = (val) => {
   queryParams.pageNum = val
-  handleQuery()
+  getList()
 }
 
 // 初始化
 onMounted(() => {
-  handleQuery()
+  getList()
 })
 </script>
 
@@ -287,5 +433,27 @@ onMounted(() => {
 .table-container::-webkit-scrollbar-track {
   border-radius: 3px;
   background: #f5f5f5;
+}
+
+.pagination-container :deep(.el-pagination.is-background) .btn-next,
+.pagination-container :deep(.el-pagination.is-background) .btn-prev,
+.pagination-container :deep(.el-pagination.is-background) .el-pager li {
+  margin: 0 4px;
+  min-width: 32px;
+  border-radius: 4px;
+}
+
+.pagination-container :deep(.el-pagination.is-background) .el-pager li:not(.is-disabled).is-active {
+  background-color: #409EFF;
+}
+
+/* 可以添加全局的 select 样式 */
+:deep(.el-select) {
+  width: 180px;
+}
+
+/* 或者给特定的 select 添加类名样式 */
+.role-select {
+  width: 180px;
 }
 </style> 
